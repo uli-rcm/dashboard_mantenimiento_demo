@@ -2,9 +2,5 @@ services:
   - type: web
     name: dashboard-ferroviario
     env: python
-    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn dashboard_unified:server --bind 0.0.0.0:$PORT
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
