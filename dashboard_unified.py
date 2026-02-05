@@ -53,8 +53,8 @@ lats, lons = [], []
 for i in range(len(stations) - 1):
     lat1, lon1 = stations[i]
     lat2, lon2 = stations[i+1]
-    for j in range(30):  # 30 puntos entre cada estación (mayor densidad espacial)
-        t = j / 30.0
+    for j in range(15):  # 15 puntos entre cada estación (optimizado para memoria)
+        t = j / 15.0
         lats.append(lat1 + t * (lat2 - lat1))
         lons.append(lon1 + t * (lon2 - lon1))
 # Añadir el último punto
@@ -77,7 +77,7 @@ for i in range(0, n_points-1, seg_size):
     })
 
 # Generar registros de aceleración con 10 zonas alternadas
-samples_per_point = 100000  # Aumentado de 200 para mayor densidad
+samples_per_point = 10000  # Reducido de 100000 para optimizar memoria en deploy
 fs = 1000.0  # Aumentado de 100.0 Hz
 accel_data = []
 
@@ -487,8 +487,16 @@ def create_map_figure():
     # Inicio y fin (opcional, ya están marcados)
     return m
 
-map_obj = create_map_figure()
-map_html = map_obj._repr_html_()
+# Lazy loading: cachear el mapa HTML para evitar regenerarlo
+_map_html_cache = None
+
+def get_map_html():
+    """Genera el HTML del mapa solo cuando se necesita (lazy loading)"""
+    global _map_html_cache
+    if _map_html_cache is None:
+        map_obj = create_map_figure()
+        _map_html_cache = map_obj._repr_html_()
+    return _map_html_cache
 
 # Calcular rango del slider
 max_chainage = pos_df['chainage_m'].max()
@@ -510,7 +518,7 @@ app.layout = html.Div([
                 ]),
                 html.Div([
                     dcc.Graph(id='mapa-via', style={'display': 'none'}),
-                    html.Iframe(srcDoc=map_html, width='100%', height=500, style={'border': 'none', 'borderRadius': '8px'})
+                    html.Iframe(srcDoc=get_map_html(), width='100%', height=500, style={'border': 'none', 'borderRadius': '8px'})
                 ], style={'marginTop': 15})
             ], style={
                 'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 
