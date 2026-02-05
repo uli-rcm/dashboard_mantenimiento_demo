@@ -14,6 +14,9 @@ import webbrowser
 from pathlib import Path
 import os
 
+# Importar configuración modular de pestañas
+from tabs_config import build_tab_geometrica, build_tab_estructural
+
 # ============================================================================
 # 1. CONFIGURACIÓN
 # ============================================================================
@@ -186,32 +189,32 @@ pos_df['disp_mm'] = np.array(displacements)  # Ya está en mm
 # 3. CREAR FUNCIONES PARA GENERAR GRÁFICAS
 # ============================================================================
 
-def create_map_figure():
-    """Crea figura del mapa con Folium convertida a Plotly"""
+def create_map_figure(quality_label):
+    """Crea figura del mapa con Folium para una etiqueta de calidad"""
     # Crear mapa con Folium centrado en CDMX
     m = folium.Map(
         location=[19.259455, -99.108042],
         zoom_start=12,
         tiles='Cartodb Positron'
     )
-    
+
     for _, row in seg_df.iterrows():
         folium.PolyLine(
             locations=[(lat, lon) for lat, lon in row['coords']],
             color=row['color'], weight=5, opacity=0.9,
-            tooltip=f"Calidad: {row['quality']} — RMS={row['rms']:.5f}"
+            tooltip=f"{quality_label}: {row['quality']} — RMS={row['rms']:.5f}"
         ).add_to(m)
-    
+
     folium.Marker(
         location=[lats[0], lons[0]], popup='Inicio (Tasqueña)',
         icon=folium.Icon(color='blue', icon='train', prefix='fa')
     ).add_to(m)
-    
+
     folium.Marker(
         location=[lats[-1], lons[-1]], popup='Fin (Xochimilco)',
         icon=folium.Icon(color='blue', icon='flag', prefix='fa')
     ).add_to(m)
-    
+
     return m
 
 def create_profile_figure():
@@ -222,7 +225,7 @@ def create_profile_figure():
         x=pos_df['chainage_m'], y=pos_df['disp_mm'],
         mode='lines+markers', name='Perfil vertical (mm)',
         marker=dict(size=6, color='blue'),
-        hovertemplate='<b>Chainage: %{x:.1f} m</b><br>Desplazamiento: %{y:.2f} mm<extra></extra>'
+        hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>Desplazamiento: %{y:.2f} mm<extra></extra>'
     ))
     
     for _, s in seg_df.iterrows():
@@ -234,194 +237,164 @@ def create_profile_figure():
         fig.add_vrect(x0=x0, x1=x1, fillcolor=color, layer='below', line_width=0)
     
     fig.update_layout(
-        title='Perfil vertical estimado (mm) vs Chainage (m)',
-        xaxis_title='Chainage (m)', yaxis_title='Desplazamiento vertical (mm)',
+        title='Perfil vertical estimado (mm) vs Cadenamiento (m)',
+        xaxis_title='Cadenamiento (m)', yaxis_title='Desplazamiento vertical (mm)',
         height=500, hovermode='x unified'
     )
     
     return fig
 
-def create_window_figures(chainage_min):
-    """Crea dos figuras para una ventana de chainage (1 km)"""
-    chainage_max = chainage_min + WINDOW_SIZE
-    
-    # Filtrar datos dentro de la ventana
-    mask = (pos_df['chainage_m'] >= chainage_min) & (pos_df['chainage_m'] <= chainage_max)
-    df_window = pos_df[mask].copy()
-    
-    if len(df_window) == 0:
-        # Ventana vacía
-        fig_acc = go.Figure()
-        fig_prof = go.Figure()
-        fig_acc.add_annotation(text="Sin datos en esta ventana")
-        fig_prof.add_annotation(text="Sin datos en esta ventana")
-        return fig_acc, fig_prof
-    
-    # Figura 1: Aceleraciones (RMS)
-    fig_acc = go.Figure()
-    fig_acc.add_trace(go.Scatter(
-        x=df_window['chainage_m'], y=df_window['rms_acc']*1000,  # convertir a mm/s²
-        mode='lines+markers', name='Aceleración RMS (mm/s²)',
-        marker=dict(size=8, color='red'),
-        hovertemplate='<b>Chainage: %{x:.1f} m</b><br>RMS: %{y:.3f} mm/s²<extra></extra>'
-    ))
-    
-    # Colorear bandas según calidad
-    for _, s in seg_df.iterrows():
-        x0 = pos_df['chainage_m'].iloc[s['start']]
-        x1 = pos_df['chainage_m'].iloc[s['end']]
-        # Restringir a ventana
-        x0_win = max(x0, chainage_min)
-        x1_win = min(x1, chainage_max)
-        if x0_win < x1_win:
-            # Colores semáforo suaves para las bandas
-            if s['quality']=='buena':
-                color = 'rgba(39,174,96,0.12)'    # Verde suave
-            elif s['quality']=='regular':
-                color = 'rgba(243,156,18,0.12)'   # Amarillo suave
-            else:
-                color = 'rgba(231,76,60,0.12)'    # Rojo suave
-            fig_acc.add_vrect(x0=x0_win, x1=x1_win, fillcolor=color, layer='below', line_width=0)
-    
-    fig_acc.update_layout(
-        title=dict(text=f'Aceleraciones (RMS): {chainage_min:.0f} - {chainage_max:.0f} m', font=dict(size=14, color='#333', family='Arial')),
-        xaxis_title='Chainage (m)',
-        yaxis_title='RMS Aceleración (mm/s²)',
-        height=500,
-        hovermode='x unified',
-        plot_bgcolor='rgba(245,243,240,0.5)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False),
-        yaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False),
-        margin=dict(l=60, r=20, t=40, b=60)
-    )
-    
-    # Figura 2: Perfil vertical
-    fig_prof = go.Figure()
-    fig_prof.add_trace(go.Scatter(
-        x=df_window['chainage_m'], y=df_window['disp_mm'],
-        mode='lines+markers', name='Perfil vertical (mm)',
-        marker=dict(size=8, color='blue'),
-        hovertemplate='<b>Chainage: %{x:.1f} m</b><br>Desplazamiento: %{y:.2f} mm<extra></extra>'
-    ))
-    
-    # Colorear bandas según calidad
-    for _, s in seg_df.iterrows():
-        x0 = pos_df['chainage_m'].iloc[s['start']]
-        x1 = pos_df['chainage_m'].iloc[s['end']]
-        x0_win = max(x0, chainage_min)
-        x1_win = min(x1, chainage_max)
-        if x0_win < x1_win:
-            # Colores semáforo suaves para las bandas
-            if s['quality']=='buena':
-                color = 'rgba(39,174,96,0.12)'    # Verde suave
-            elif s['quality']=='regular':
-                color = 'rgba(243,156,18,0.12)'   # Amarillo suave
-            else:
-                color = 'rgba(231,76,60,0.12)'    # Rojo suave
-            
-            fig_prof.add_vrect(x0=x0_win, x1=x1_win, fillcolor=color, layer='below', line_width=0)
-    
-    fig_prof.update_layout(
-        title=dict(text=f'Perfil vertical: {chainage_min:.0f} - {chainage_max:.0f} m', font=dict(size=14, color='#333', family='Arial')),
-        xaxis_title='Chainage (m)',
-        yaxis_title='Desplazamiento vertical (mm)',
-        height=500,
-        hovermode='x unified',
-        plot_bgcolor='rgba(245,243,240,0.5)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False),
-        yaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False),
-        margin=dict(l=60, r=20, t=40, b=60)
-    )
-    
-    return fig_acc, fig_prof
+# ============================================================================
+# 4A. GENERAR DATOS GPR SINTÉTICOS
+# ============================================================================
+print("Generando datos GPR sintéticos...")
 
-def create_window_table(chainage_min):
-    """Crea una tabla con un único renglón para la ventana de 1 km actual"""
-    # P.K. Inicial = valor actual del slider
-    # P.K. Final = P.K. Inicial + 1000 metros
-    chainage_start = chainage_min
-    chainage_end = chainage_min + 1000
+# Profundidades reales en metros (las antenas están 0.4m sobre el balasto)
+# - Superficie del balasto (air-ballast): 0.4 m
+# - Espesor de balasto: 0.3 m (0.4m a 0.7m)
+# - Espesor de subbalasto: 0.3 m (0.7m a 1.0m)
+# - Espesor de subrasante: 0.4 m (1.0m a 1.4m)
+
+gpr_depth_samples = 400  # Muestras en profundidad
+profundidad_total_m = 1.4  # Profundidad total en metros
+
+# Convertir profundidades a índices de muestra
+# Índice = (profundidad_m / profundidad_total_m) * gpr_depth_samples
+surface_idx = int(0.4 / profundidad_total_m * gpr_depth_samples)  # ~114
+interface1_idx = int(0.7 / profundidad_total_m * gpr_depth_samples)  # ~200 (balasto-subbalasto)
+interface2_idx = int(1.0 / profundidad_total_m * gpr_depth_samples)  # ~286 (subbalasto-subrasante)
+
+print(f"  • Superficie balasto: índice {surface_idx}")
+print(f"  • Interfaz balasto-subbalasto: índice {interface1_idx}")
+print(f"  • Interfaz subbalasto-subrasante: índice {interface2_idx}")
+
+# Función para crear wavelet tipo Ricker (simula radargrama)
+def ricker_wavelet(length, amplitude=1.0, freq=0.1):
+    """
+    Crea un wavelet tipo Ricker normalizado
+    Simula la oscilación típica en un radargrama GPR
+    """
+    t = np.linspace(-length/2, length/2, length)
+    # Wavelet de Ricker: (1 - 2*pi^2*freq^2*t^2) * exp(-pi^2*freq^2*t^2)
+    ricker = (1 - 2 * np.pi**2 * freq**2 * t**2) * np.exp(-np.pi**2 * freq**2 * t**2)
+    return amplitude * ricker / np.max(np.abs(ricker))
+
+# Generar matriz GPR: (n_points, gpr_depth_samples)
+gpr_raw = np.zeros((n_points, gpr_depth_samples))
+
+for i in range(n_points):
+    # Determinar si este punto está en zona "fouled" (contaminada)
+    zone_idx = min(int(i / zone_size), num_zones - 1)
+    pattern = zone_patterns[zone_idx]
+    is_fouled = (pattern['quality'] == 'mala')  # Fouled ballast en zonas con mala calidad
     
-    # Filtrar datos dentro de este rango
-    mask = (pos_df['chainage_m'] >= chainage_start) & (pos_df['chainage_m'] < chainage_end)
-    data_in_window = pos_df[mask]
+    # Generar ruido base (siempre presente)
+    noise = np.random.randn(gpr_depth_samples) * 0.015
+    gpr_raw[i, :] = noise
     
-    if len(data_in_window) == 0:
-        # Sin datos en esta ventana
-        return html.Table([
-            html.Thead(
-                html.Tr([
-                    html.Th('P.K. Inicial (m)', style={'padding': '10px', 'borderBottom': '2px solid #ddd'}),
-                    html.Th('P.K. Final (m)', style={'padding': '10px', 'borderBottom': '2px solid #ddd'}),
-                    html.Th('RMS (m/s²)', style={'padding': '10px', 'borderBottom': '2px solid #ddd'}),
-                    html.Th('Calidad', style={'padding': '10px', 'borderBottom': '2px solid #ddd'}),
-                ])
-            ),
-            html.Tbody(
-                html.Tr(
-                    html.Td("Sin datos", colSpan=4, style={'padding': '10px', 'textAlign': 'center'})
-                )
-            )
-        ], style={
-            'width': '100%', 'borderCollapse': 'collapse',
-            'backgroundColor': 'white', 'borderRadius': '5px'
-        })
+    # Reflexión 1: Interfaz aire-balasto (superficie)
+    # Reflexión muy fuerte en la superficie
+    width_surface = 25
+    amplitude_surface = 0.95
+    surface_wavelet = ricker_wavelet(width_surface * 2, amplitude_surface, freq=0.15)
+    idx_surface_start = max(0, surface_idx - width_surface)
+    idx_surface_end = min(gpr_depth_samples, surface_idx + width_surface)
+    surf_len = idx_surface_end - idx_surface_start
+    gpr_raw[i, idx_surface_start:idx_surface_end] += surface_wavelet[-surf_len:] if surf_len <= len(surface_wavelet) else surface_wavelet[:surf_len]
     
-    # Calcular RMS promedio para esta ventana
-    avg_rms = data_in_window['rms_acc'].mean()
-    
-    # Determinar calidad según RMS
-    if avg_rms < RMS_THRESHOLD_GOOD:
-        quality = 'buena'
-        color = "#08DA5F"  # Verde semáforo
-    elif avg_rms < RMS_THRESHOLD_REGULAR:
-        quality = 'regular'
-        color = "#F3EF12"  # Amarillo semáforo
+    if is_fouled:
+        # Fouled ballast: la interfaz balasto-subbalasto NO tiene reflexión clara
+        # Solo ruido y reverberación del balasto contaminado
+        # Atenuación extrema en la interfaz balasto-subbalasto
+        weak_signal = 0.05 * np.exp(-np.arange(50)**2 / 100) * (0.3 + 0.4*np.random.rand())
+        idx_weak_start = max(0, interface1_idx - 25)
+        idx_weak_end = min(gpr_depth_samples, interface1_idx + 25)
+        weak_len = idx_weak_end - idx_weak_start
+        if weak_len <= len(weak_signal):
+            gpr_raw[i, idx_weak_start:idx_weak_end] += weak_signal[-weak_len:]
     else:
-        quality = 'mala'
-        color = "#F51E06"  # Rojo semáforo
+        # Reflexión 2: Interfaz balasto-subbalasto (clara)
+        # Segundo pico más débil pero clara osculación
+        width_inter1 = 30
+        amplitude_inter1 = 0.7 + 0.1 * np.random.randn()
+        amplitude_inter1 = np.clip(amplitude_inter1, 0.5, 0.85)
+        inter1_wavelet = ricker_wavelet(width_inter1 * 2, amplitude_inter1, freq=0.12)
+        idx_inter1_start = max(0, interface1_idx - width_inter1)
+        idx_inter1_end = min(gpr_depth_samples, interface1_idx + width_inter1)
+        inter1_len = idx_inter1_end - idx_inter1_start
+        gpr_raw[i, idx_inter1_start:idx_inter1_end] += inter1_wavelet[-inter1_len:] if inter1_len <= len(inter1_wavelet) else inter1_wavelet[:inter1_len]
     
-    # Crear tabla con un solo renglón - diseño moderno
-    row = html.Tr([
-        html.Td(f"{chainage_start:.0f}", style={'padding': '16px 18px', 'border': 'none', 'borderBottom': '1px solid #E0E0E0', 'fontSize': '14px', 'fontWeight': '500', 'color': '#333'}),
-        html.Td(f"{chainage_end:.0f}", style={'padding': '16px 18px', 'border': 'none', 'borderBottom': '1px solid #E0E0E0', 'fontSize': '14px', 'fontWeight': '500', 'color': '#333'}),
-        html.Td(f"{avg_rms:.5f}", style={'padding': '16px 18px', 'border': 'none', 'borderBottom': '1px solid #E0E0E0', 'fontSize': '14px', 'fontWeight': '600', 'color': '#333', 'fontFamily': 'monospace'}),
-        html.Td(
-            f"● {quality.upper()}",
-            style={
-                'padding': '16px 18px',
-                'border': 'none',
-                'borderBottom': '1px solid #E0E0E0',
-                'color': 'white',
-                'backgroundColor': color,
-                'fontWeight': '700',
-                'textAlign': 'center',
-                'borderRadius': '6px',
-                'fontSize': '13px',
-                'letterSpacing': '0.5px'
-            }
-        )
-    ])
+    # Reflexión 3: Interfaz subbalasto-subrasante
+    # Tercera reflexión más débil por atenuación
+    width_inter2 = 35
+    amplitude_inter2 = 0.5 + 0.08 * np.random.randn()
+    amplitude_inter2 = np.clip(amplitude_inter2, 0.35, 0.65)
+    inter2_wavelet = ricker_wavelet(width_inter2 * 2, amplitude_inter2, freq=0.10)
+    idx_inter2_start = max(0, interface2_idx - width_inter2)
+    idx_inter2_end = min(gpr_depth_samples, interface2_idx + width_inter2)
+    inter2_len = idx_inter2_end - idx_inter2_start
+    gpr_raw[i, idx_inter2_start:idx_inter2_end] += inter2_wavelet[-inter2_len:] if inter2_len <= len(inter2_wavelet) else inter2_wavelet[:inter2_len]
     
-    return html.Table([
-        html.Thead(
-        html.Tr([
-                html.Th('P.K. Inicial (m)', style={'padding': '14px 18px', 'backgroundColor': '#1565C0', 'color': 'white', 'fontWeight': '700', 'borderBottom': '3px solid #0D47A1', 'textAlign': 'left', 'fontSize': '13px', 'letterSpacing': '0.3px'}),
-                html.Th('P.K. Final (m)', style={'padding': '14px 18px', 'backgroundColor': '#1565C0', 'color': 'white', 'fontWeight': '700', 'borderBottom': '3px solid #0D47A1', 'textAlign': 'left', 'fontSize': '13px', 'letterSpacing': '0.3px'}),
-                html.Th('RMS (m/s²)', style={'padding': '14px 18px', 'backgroundColor': '#1565C0', 'color': 'white', 'fontWeight': '700', 'borderBottom': '3px solid #0D47A1', 'textAlign': 'left', 'fontSize': '13px', 'letterSpacing': '0.3px'}),
-                html.Th('Calidad', style={'padding': '14px 18px', 'backgroundColor': '#1565C0', 'color': 'white', 'fontWeight': '700', 'borderBottom': '3px solid #0D47A1', 'textAlign': 'center', 'fontSize': '13px', 'letterSpacing': '0.3px'}),
-            ])
-        ),
-        html.Tbody(row)
-    ], style={
-        'width': '100%', 'borderCollapse': 'collapse',
-        'backgroundColor': 'white', 'borderRadius': '6px'
+    # Aplicar atenuación exponencial con profundidad (pérdida realista de energía EM)
+    attenuation = np.exp(-np.arange(gpr_depth_samples) / 120.0)
+    gpr_raw[i, :] *= attenuation
+    
+    # Normalizar entre 0-1
+    gpr_max = np.max(np.abs(gpr_raw[i, :]))
+    if gpr_max > 0:
+        gpr_raw[i, :] = np.abs(gpr_raw[i, :]) / gpr_max
+
+# Crear DataFrame con datos GPR
+gpr_data = []
+for i in range(n_points):
+    gpr_data.append({
+        'chainage_m': pos_df['chainage_m'].iloc[i],
+        'gpr_profile': gpr_raw[i, :]  # Array de profundidad
     })
+
+gpr_df = pd.DataFrame(gpr_data)
+
+print(f"✓ Datos GPR generados: {n_points} perfiles con {gpr_depth_samples} muestras de profundidad")
 
 print("Iniciando aplicación Dash...")
 app = Dash(__name__)
+
+# =================== Lazy loading: cachear los mapas HTML ===================
+_map_html_cache = {
+    'geometrica': None,
+    'estructural': None
+}
+
+def get_map_html(map_kind, quality_label):
+    """Genera el HTML del mapa solo cuando se necesita (lazy loading)"""
+    if _map_html_cache.get(map_kind) is None:
+        map_obj = create_map_figure(quality_label)
+        # Marcadores de estaciones con ícono personalizado
+        station_icon_path = os.path.join(os.getcwd(), 'assets', 'station_icon.png')
+        for idx, (lat, lon) in enumerate(stations):
+            folium.Marker(
+                location=[lat, lon],
+                popup=f'Estación {idx+1}',
+                icon=folium.CustomIcon(station_icon_path, icon_size=(40, 40))
+            ).add_to(map_obj)
+        _map_html_cache[map_kind] = map_obj._repr_html_()
+    return _map_html_cache[map_kind]
+
+# Calcular rango del slider
+max_chainage = pos_df['chainage_m'].max()
+slider_max = int(max_chainage - WINDOW_SIZE)
+
+# Construir pestañas de forma modular
+tab_geometrica = build_tab_geometrica(
+    app, pos_df, seg_df, 
+    RMS_THRESHOLD_GOOD, RMS_THRESHOLD_REGULAR, 
+    WINDOW_SIZE, slider_max, get_map_html
+)
+
+tab_estructural = build_tab_estructural(
+    app, pos_df, seg_df, gpr_df, gpr_depth_samples,
+    WINDOW_SIZE, slider_max, get_map_html
+)
 
 # =================== Encabezado con logos ===================
 header = html.Div(
@@ -437,7 +410,7 @@ header = html.Div(
         'minHeight': '80px'
     },
     children=[
-        html.Img(src=app.get_asset_url('foglia.png'), style={'height': '60px', 'marginRight': '30px'}),
+        html.Img(src=app.get_asset_url('foglia.png'), style={'height': '80px', 'marginRight': '30px'}),
         html.Div([
             html.H1('Monitoreo de Infraestructura Ferroviaria', style={
                 'textAlign': 'center',
@@ -458,199 +431,24 @@ header = html.Div(
                 'fontFamily': 'inherit',
             })
         ], style={'flex': '1'}),
-        html.Img(src=app.get_asset_url('te.png'), style={'height': '60px', 'marginLeft': '30px'}),
+        html.Img(src=app.get_asset_url('te.png'), style={'height': '80px', 'marginLeft': '30px'}),
     ]
 )
 
-# Generar mapa
-def create_map_figure():
-    """Crea figura del mapa con Folium convertida a Plotly"""
-    m = folium.Map(
-        location=[19.259455, -99.108042],
-        zoom_start=12,
-        tiles='Cartodb Positron'
-    )
-    for _, row in seg_df.iterrows():
-        folium.PolyLine(
-            locations=[(lat, lon) for lat, lon in row['coords']],
-            color=row['color'], weight=5, opacity=0.9,
-            tooltip=f"Calidad: {row['quality']} — RMS={row['rms']:.5f}"
-        ).add_to(m)
-    # Marcadores de estaciones con ícono personalizado
-    station_icon_path = os.path.join(os.getcwd(), 'assets', 'station_icon.png')
-    for idx, (lat, lon) in enumerate(stations):
-        folium.Marker(
-            location=[lat, lon],
-            popup=f'Estación {idx+1}',
-            icon=folium.CustomIcon(station_icon_path, icon_size=(40, 40))
-        ).add_to(m)
-    # Inicio y fin (opcional, ya están marcados)
-    return m
-
-# Lazy loading: cachear el mapa HTML para evitar regenerarlo
-_map_html_cache = None
-
-def get_map_html():
-    """Genera el HTML del mapa solo cuando se necesita (lazy loading)"""
-    global _map_html_cache
-    if _map_html_cache is None:
-        map_obj = create_map_figure()
-        _map_html_cache = map_obj._repr_html_()
-    return _map_html_cache
-
-# Calcular rango del slider
-max_chainage = pos_df['chainage_m'].max()
-slider_max = int(max_chainage - WINDOW_SIZE)
-
-# Crear layout con encabezado de logos
+# Crear layout con encabezado y pestañas modulares
 app.layout = html.Div([
     header,
-    # Contenido principal
-    html.Div([
-        # Fila 1: Mapa con icono
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('🗺️ Mapa de Calidad de Vía', 
-                            style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 18, 'margin': '0 0 15px 0'}),
-                    html.P('Visualización geoespacial del estado de la infraestructura',
-                           style={'color': '#666', 'fontSize': 12, 'margin': 0})
-                ]),
-                html.Div([
-                    dcc.Graph(id='mapa-via', style={'display': 'none'}),
-                    html.Iframe(srcDoc=get_map_html(), width='100%', height=500, style={'border': 'none', 'borderRadius': '8px'})
-                ], style={'marginTop': 15})
-            ], style={
-                'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 
-                'borderRadius': '12px', 
-                'padding': 25,
-                'backgroundColor': 'white',
-                'transition': 'box-shadow 0.3s ease'
-            })
-        ], style={'marginBottom': 40}),
-        
-        # Fila 2: Dos gráficas lado a lado con headers mejorados
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('📈 Aceleración RMS', 
-                            style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 16, 'margin': '0 0 8px 0'}),
-                    html.P('Energía acumulada de vibración (mm/s²)',
-                           style={'color': '#666', 'fontSize': 11, 'margin': 0})
-                ]),
-                dcc.Graph(id='grafica-aceleraciones', style={'marginTop': 15})
-            ], style={
-                'flex': '1', 
-                'marginRight': '20px', 
-                'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 
-                'borderRadius': '12px', 
-                'padding': 25,
-                'backgroundColor': 'white'
-            }),
-            
-            html.Div([
-                html.Div([
-                    html.H3('📉 Perfil Vertical', 
-                            style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 16, 'margin': '0 0 8px 0'}),
-                    html.P('Desplazamiento vertical estimado (mm)',
-                           style={'color': '#666', 'fontSize': 11, 'margin': 0})
-                ]),
-                dcc.Graph(id='grafica-perfil', style={'marginTop': 15})
-            ], style={
-                'flex': '1', 
-                'marginLeft': '20px', 
-                'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 
-                'borderRadius': '12px', 
-                'padding': 25,
-                'backgroundColor': 'white'
-            })
-        ], style={'display': 'flex', 'gap': '0px', 'marginBottom': 40}),
-        
-        # Fila 3: Control del slider
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.Div([
-                        html.H3('🎯 Control de Ventana', 
-                                style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 16, 'margin': '0 0 8px 0'}),
-                        html.P('Desplaza la ventana de visualización a lo largo de la vía',
-                               style={'color': '#666', 'fontSize': 11, 'margin': 0})
-                    ]),
-                    html.Div([
-                        dcc.Slider(
-                            id='chainage-slider',
-                            min=0,
-                            max=slider_max,
-                            step=100,
-                            value=0,
-                            marks={i: f'{i} m' for i in range(0, int(slider_max)+1, int(slider_max/4))},
-                            tooltip={"placement": "bottom", "always_visible": True}
-                        ),
-                        html.Div(id='slider-output', style={
-                            'marginTop': 20, 
-                            'fontSize': 13, 
-                            'color': '#1565C0',
-                            'fontWeight': '600',
-                            'textAlign': 'center',
-                            'padding': '15px',
-                            'backgroundColor': '#E3F2FD',
-                            'borderRadius': '6px',
-                            'border': '1px solid #90CAF9'
-                        })
-                    ], style={'marginTop': 20})
-                ])
-            ], style={
-                'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 
-                'borderRadius': '12px', 
-                'padding': 25,
-                'backgroundColor': 'white'
-            })
-        ], style={'marginBottom': 40}),
-        
-        # Fila 4: Tabla de datos con diseño mejorado
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('📋 Datos del Kilómetro Actual', 
-                            style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 16, 'margin': '0 0 8px 0'}),
-                    html.P('Resumen agregado de calidad y vibraciones',
-                           style={'color': '#666', 'fontSize': 11, 'margin': 0})
-                ], style={'marginBottom': 20}),
-                html.Div(id='tabla-segmentos')
-            ], style={
-                'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 
-                'borderRadius': '12px', 
-                'padding': 25,
-                'backgroundColor': 'white'
-            })
-        ], style={'marginBottom': 40}),
-        
-    ], style={'maxWidth': '1400px', 'margin': '0 auto', 'padding': '40px 25px'})
-    
+    dcc.Tabs(
+        value='tab-geometrica',
+        children=[tab_geometrica, tab_estructural],
+        style={'padding': '10px 25px'}
+    )
 ], style={
     'fontFamily': '"Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
     'backgroundColor': '#F8F9FA',
     'minHeight': '100vh',
     'color': '#333'
 })
-
-# ============================================================================
-# 5. CALLBACKS PARA ACTUALIZAR GRÁFICAS CON SLIDER
-# ============================================================================
-
-@app.callback(
-    [Output('grafica-aceleraciones', 'figure'),
-     Output('grafica-perfil', 'figure'),
-     Output('slider-output', 'children'),
-     Output('tabla-segmentos', 'children')],
-    Input('chainage-slider', 'value')
-)
-def update_graphs(chainage_min):
-    fig_acc, fig_prof = create_window_figures(chainage_min)
-    chainage_max = chainage_min + WINDOW_SIZE
-    info_text = f"Visualizando: {chainage_min:.0f} - {chainage_max:.0f} metros ({WINDOW_SIZE/1000:.1f} km)"
-    tabla = create_window_table(chainage_min)
-    return fig_acc, fig_prof, info_text, tabla
 
 # ============================================================================
 # 6. EJECUTAR APLICACIÓN
