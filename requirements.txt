@@ -1,8 +1,8 @@
-numpy==1.26.4
-pandas==2.2.0
-folium==0.15.1
-plotly==5.18.0
-dash==2.14.2
-scipy==1.12.0
-gunicorn==21.2.0
+numpy>=1.24.0
+pandas>=2.0.0,<2.2.0
+folium>=0.14.0
+plotly>=5.0.0
+dash>=2.14.0
+scipy>=1.11.0
+gunicorn>=21.0.0
 branca
