@@ -500,3 +500,184 @@ def build_tab_estructural(app, pos_df, seg_df, gpr_df, gpr_depth_samples, WINDOW
         return fig_gpr, info_text, tabla_html
     
     return tab_layout
+
+
+# ============================================================================
+# TAB 3: LiDAR DOPPLER (CURVATURA Y ESCANTILLON)
+# ============================================================================
+
+def build_tab_lidar(app, pos_df, lidar_df, WINDOW_SIZE, slider_max, get_map_html):
+    """
+    Construye la pestaña LiDAR (curvatura y escantillon)
+
+    Args:
+        app: Instancia de Dash app
+        pos_df: DataFrame con datos de posicion
+        lidar_df: DataFrame con curvatura teorica/medida y escantillon
+        WINDOW_SIZE: Tamaño de ventana en metros
+        slider_max: Valor maximo del slider
+        get_map_html: Funcion para obtener HTML del mapa
+
+    Returns:
+        dcc.Tab: Componente de la pestaña
+    """
+
+    def create_curvature_figure(chainage_min):
+        chainage_max = chainage_min + WINDOW_SIZE
+
+        mask = (lidar_df['chainage_m'] >= chainage_min) & (lidar_df['chainage_m'] <= chainage_max)
+        df_window = lidar_df[mask].copy()
+
+        if len(df_window) == 0:
+            fig = go.Figure()
+            fig.add_annotation(text="Sin datos LiDAR en esta ventana")
+            return fig
+
+        df_window = df_window.sort_values('chainage_m')
+        high_res_chainage = np.linspace(chainage_min, chainage_max, 2000)
+        curv_theory_hi = np.interp(
+            high_res_chainage,
+            df_window['chainage_m'].values,
+            df_window['curvature_theoretical'].values
+        )
+        curv_meas_hi = np.interp(
+            high_res_chainage,
+            df_window['chainage_m'].values,
+            df_window['curvature_measured'].values
+        )
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=high_res_chainage,
+            y=curv_theory_hi,
+            mode='lines',
+            name='Curvatura teorica (deg)',
+            line=dict(color='#1565C0', width=2, dash='dash'),
+            hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>Teorica: %{y:.3f} deg<extra></extra>'
+        ))
+        fig.add_trace(go.Scatter(
+            x=high_res_chainage,
+            y=curv_meas_hi,
+            mode='lines+markers',
+            name='Curvatura medida (deg)',
+            marker=dict(size=4, color='#E74C3C'),
+            line=dict(color='#E74C3C', width=2),
+            hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>Medida: %{y:.3f} deg<extra></extra>'
+        ))
+
+        fig.update_layout(
+            title=dict(text=f'Curvatura LiDAR: {chainage_min:.0f} - {chainage_max:.0f} m', font=dict(size=14, color='#333', family='Arial')),
+            xaxis_title='Cadenamiento (m)',
+            yaxis_title='Curvatura (deg)',
+            height=500,
+            hovermode='x unified',
+            plot_bgcolor='rgba(245,243,240,0.5)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False),
+            yaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False, range=[-5.2, 5.2]),
+            margin=dict(l=60, r=20, t=40, b=60)
+        )
+
+        return fig
+
+    def create_gauge_figure(chainage_min):
+        chainage_max = chainage_min + WINDOW_SIZE
+
+        mask = (lidar_df['chainage_m'] >= chainage_min) & (lidar_df['chainage_m'] <= chainage_max)
+        df_window = lidar_df[mask].copy()
+
+        if len(df_window) == 0:
+            fig = go.Figure()
+            fig.add_annotation(text="Sin datos LiDAR en esta ventana")
+            return fig
+
+        df_window = df_window.sort_values('chainage_m')
+        high_res_chainage = np.linspace(chainage_min, chainage_max, 2000)
+        rng = np.random.default_rng(int(chainage_min))
+        noise = 0.9 * rng.standard_normal(len(high_res_chainage))
+        gauge_hi = np.clip(noise, -5.0, 5.0)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=high_res_chainage,
+            y=gauge_hi,
+            mode='lines',
+            name='Variacion de escantillon (mm)',
+            line=dict(color='#27AE60', width=1.2),
+            hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>Escantillon: %{y:.2f} mm<extra></extra>'
+        ))
+
+        fig.update_layout(
+            title=dict(text=f'Escantillon LiDAR: {chainage_min:.0f} - {chainage_max:.0f} m', font=dict(size=14, color='#333', family='Arial')),
+            xaxis_title='Cadenamiento (m)',
+            yaxis_title='Variacion de escantillon (mm)',
+            height=400,
+            hovermode='x unified',
+            plot_bgcolor='rgba(245,243,240,0.5)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False, range=[chainage_min, chainage_max]),
+            yaxis=dict(showgrid=True, gridwidth=1, gridcolor='rgba(0,0,0,0.05)', zeroline=False, range=[-5.5, 5.5]),
+            margin=dict(l=60, r=20, t=40, b=60)
+        )
+
+        return fig
+
+    tab_layout = dcc.Tab(
+        label='LiDAR Doppler',
+        value='tab-lidar',
+        children=[
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.H3('🛰️ Curvatura LiDAR (Doppler)',
+                                style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 22, 'margin': '0 0 8px 0'}),
+                        html.P('Comparacion entre curvatura teorica y medida con sensores LiDAR',
+                               style={'color': '#666', 'fontSize': 14, 'margin': 0})
+                    ]),
+                    dcc.Graph(id='grafica-lidar-curvatura', style={'marginTop': 15}),
+                    html.Div([
+                        html.H3('🎯 Control de Ventana',
+                                style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 18, 'margin': '0 0 8px 0'}),
+                        html.P('Desplaza la ventana de visualizacion a lo largo de la via',
+                               style={'color': '#666', 'fontSize': 13, 'margin': 0}),
+                        dcc.Slider(
+                            id='chainage-slider-lidar',
+                            min=0,
+                            max=slider_max,
+                            step=100,
+                            value=0,
+                            marks={i: f'{i} m' for i in range(0, int(slider_max)+1, int(slider_max/4))},
+                            tooltip={"placement": "bottom", "always_visible": True}
+                        ),
+                        html.Div(id='slider-output-lidar', style={'marginTop': 20, 'fontSize': 13, 'color': '#1565C0', 'fontWeight': '600', 'textAlign': 'center', 'padding': '15px', 'backgroundColor': '#E3F2FD', 'borderRadius': '6px', 'border': '1px solid #90CAF9'})
+                    ], style={'marginTop': 20})
+                ], style={'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 'borderRadius': '12px', 'padding': 25, 'backgroundColor': 'white', 'marginBottom': 40}),
+
+                html.Div([
+                    html.Div([
+                        html.H3('📏 Variaciones de Escantillon',
+                                style={'color': '#1565C0', 'fontWeight': '700', 'fontSize': 22, 'margin': '0 0 15px 0'}),
+                        html.P('Variaciones del escantillon medidas con sensores LiDAR',
+                               style={'color': '#666', 'fontSize': 14, 'margin': 0})
+                    ]),
+                    dcc.Graph(id='grafica-lidar-escantillon', style={'marginTop': 15})
+                ], style={'boxShadow': '0 8px 24px rgba(0,0,0,0.12)', 'borderRadius': '12px', 'padding': 25, 'backgroundColor': 'white'})
+
+            ], style={'maxWidth': '1400px', 'margin': '0 auto', 'padding': '40px 25px'})
+        ]
+    )
+
+    @app.callback(
+        [Output('grafica-lidar-curvatura', 'figure'),
+         Output('grafica-lidar-escantillon', 'figure'),
+         Output('slider-output-lidar', 'children')],
+        Input('chainage-slider-lidar', 'value')
+    )
+    def update_lidar(chainage_min):
+        fig = create_curvature_figure(chainage_min)
+        fig_gauge = create_gauge_figure(chainage_min)
+        chainage_max = chainage_min + WINDOW_SIZE
+        info_text = f"Visualizando: {chainage_min:.0f} - {chainage_max:.0f} metros ({WINDOW_SIZE/1000:.1f} km)"
+        return fig, fig_gauge, info_text
+
+    return tab_layout

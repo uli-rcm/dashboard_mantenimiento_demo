@@ -15,7 +15,7 @@ from pathlib import Path
 import os
 
 # Importar configuración modular de pestañas
-from tabs_config import build_tab_geometrica, build_tab_estructural
+from tabs_config import build_tab_geometrica, build_tab_estructural, build_tab_lidar
 
 # ============================================================================
 # 1. CONFIGURACIÓN
@@ -356,6 +356,87 @@ gpr_df = pd.DataFrame(gpr_data)
 
 print(f"✓ Datos GPR generados: {n_points} perfiles con {gpr_depth_samples} muestras de profundidad")
 
+# ============================================================================
+# 4B. GENERAR DATOS LiDAR SINTETICOS (CURVATURA Y ESCANTILLON)
+# ============================================================================
+print("Generando datos LiDAR sinteticos...")
+
+chainage = np.linspace(0, pos_df['chainage_m'].max(), n_points * 10)
+curv_theoretical = np.zeros_like(chainage, dtype=float)
+
+def apply_trapezoid_curve(start_m, end_m, peak_deg, ramp_frac=0.25):
+    if end_m <= start_m:
+        return
+    total_len = end_m - start_m
+    ramp_len = max(total_len * ramp_frac, 1.0)
+    flat_len = total_len - 2.0 * ramp_len
+    if flat_len < 0:
+        ramp_len = total_len / 2.0
+        flat_len = 0.0
+
+    up_start = start_m
+    up_end = start_m + ramp_len
+    flat_start = up_end
+    flat_end = up_end + flat_len
+    down_start = flat_end
+    down_end = end_m
+
+    mask_up = (chainage >= up_start) & (chainage < up_end)
+    if np.any(mask_up):
+        x = (chainage[mask_up] - up_start) / max(ramp_len, 1.0)
+        curv_theoretical[mask_up] = peak_deg * x
+
+    if flat_len > 0:
+        mask_flat = (chainage >= flat_start) & (chainage <= flat_end)
+        curv_theoretical[mask_flat] = peak_deg
+
+    mask_down = (chainage > down_start) & (chainage <= down_end)
+    if np.any(mask_down):
+        x = (down_end - chainage[mask_down]) / max(ramp_len, 1.0)
+        curv_theoretical[mask_down] = peak_deg * x
+
+curve_segments = []
+_rng_curves = np.random.default_rng(123)
+total_length = chainage[-1]
+n_curves = 25
+cursor = 300.0
+min_curve_len = 250.0
+max_curve_len = 650.0
+min_tangent = 450.0
+max_tangent = 900.0
+
+for i in range(n_curves):
+    curve_len = _rng_curves.uniform(min_curve_len, max_curve_len)
+    if cursor + curve_len > total_length:
+        break
+    peak = _rng_curves.uniform(1.5, 4.6) * (1.0 if i % 2 == 0 else -1.0)
+    curve_segments.append((cursor, cursor + curve_len, peak))
+    cursor += curve_len + _rng_curves.uniform(min_tangent, max_tangent)
+
+for start_m, end_m, peak in curve_segments:
+    apply_trapezoid_curve(start_m, end_m, peak)
+
+drift = 0.1 * np.sin(2 * np.pi * chainage / 6500.0)
+noise = 0.1 * np.random.randn(len(chainage))
+curv_measured = np.clip(curv_theoretical + drift + noise, -4.9, 4.9)
+
+gauge_nominal_mm = 1435.0
+gauge_dev_mm = 3.0 * np.random.randn(len(chainage))
+spike_mask = np.random.rand(len(chainage)) < 0.03
+gauge_dev_mm[spike_mask] += 4.0 * np.random.randn(np.sum(spike_mask))
+gauge_dev_mm = np.clip(gauge_dev_mm, -5.0, 5.0)
+gauge_mm = gauge_nominal_mm + gauge_dev_mm
+
+lidar_df = pd.DataFrame({
+    'chainage_m': chainage,
+    'curvature_theoretical': curv_theoretical,
+    'curvature_measured': curv_measured,
+    'gauge_mm': gauge_mm,
+    'gauge_dev_mm': gauge_dev_mm
+})
+
+print(f"✓ Datos LiDAR generados: {n_points} puntos con curvatura y escantillon")
+
 print("Iniciando aplicación Dash...")
 app = Dash(__name__)
 
@@ -393,6 +474,11 @@ tab_geometrica = build_tab_geometrica(
 
 tab_estructural = build_tab_estructural(
     app, pos_df, seg_df, gpr_df, gpr_depth_samples,
+    WINDOW_SIZE, slider_max, get_map_html
+)
+
+tab_lidar = build_tab_lidar(
+    app, pos_df, lidar_df,
     WINDOW_SIZE, slider_max, get_map_html
 )
 
@@ -440,7 +526,7 @@ app.layout = html.Div([
     header,
     dcc.Tabs(
         value='tab-geometrica',
-        children=[tab_geometrica, tab_estructural],
+        children=[tab_geometrica, tab_estructural, tab_lidar],
         style={'padding': '10px 25px'}
     )
 ], style={
