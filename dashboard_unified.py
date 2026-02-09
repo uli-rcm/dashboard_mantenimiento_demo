@@ -129,7 +129,7 @@ for i in range(n_points):
 
 rms = np.array([np.sqrt(np.mean(a**2)) for a in accel_data])
 pos_df = pd.DataFrame({'lat': lats, 'lon': lons, 'rms_acc': rms})
-pos_df['chainage_m'] = np.linspace(0, 25000, n_points)  # ~25 km de ruta real
+pos_df['chainage_m'] = np.linspace(0, 13040, n_points)  # 13.04 km de ruta total
 
 # Asignar calidad por segmento
 # Umbrales ajustados para nuevas amplitudes (en m/s²)
