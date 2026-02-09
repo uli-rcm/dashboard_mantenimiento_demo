@@ -7,6 +7,7 @@ Con slider para visualizar 1 km a la vez
 import numpy as np
 import pandas as pd
 import folium
+import base64
 import plotly.graph_objects as go
 from scipy import signal
 from dash import Dash, dcc, html, Input, Output, State
@@ -193,7 +194,7 @@ def create_map_figure(quality_label):
     """Crea figura del mapa con Folium para una etiqueta de calidad"""
     # Crear mapa con Folium centrado en CDMX
     m = folium.Map(
-        location=[19.259455, -99.108042],
+        location=[19.295000, -99.121000], # Centrado en coordenada del Estadio Azteca
         zoom_start=12,
         tiles='Cartodb Positron'
     )
@@ -458,7 +459,61 @@ def get_map_html(map_kind, quality_label):
                 popup=f'Estación {idx+1}',
                 icon=folium.CustomIcon(station_icon_path, icon_size=(40, 40))
             ).add_to(map_obj)
-        _map_html_cache[map_kind] = map_obj._repr_html_()
+        map_html = map_obj.get_root().render()
+        station_icon_data = None
+        if os.path.exists(station_icon_path):
+            with open(station_icon_path, "rb") as icon_file:
+                station_icon_data = base64.b64encode(icon_file.read()).decode("ascii")
+        station_icon_url = f"data:image/png;base64,{station_icon_data}" if station_icon_data else ""
+        legend_html = f"""
+        <div id="map-legend" style="
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 10px 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #333;
+        ">
+            <div style="font-weight: bold; margin-bottom: 6px;">Simbologia</div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <span style="display:inline-block;width:12px;height:12px;background:#27AE60;border-radius:2px;margin-right:6px;"></span>
+                Buena
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <span style="display:inline-block;width:12px;height:12px;background:#F39C12;border-radius:2px;margin-right:6px;"></span>
+                Regular
+            </div>
+            <div style="display: flex; align-items: center;">
+                <span style="display:inline-block;width:12px;height:12px;background:#E74C3C;border-radius:2px;margin-right:6px;"></span>
+                Mala
+            </div>
+            <div style="height: 6px;"></div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <img src="{station_icon_url}" style="width:14px;height:14px;margin-right:6px;" />
+                Estaciones
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <span style="display:inline-block;width:14px;margin-right:6px;text-align:center;">
+                    <i class="fa fa-train" style="color:#2A81CB;"></i>
+                </span>
+                Terminal inicio
+            </div>
+            <div style="display: flex; align-items: center;">
+                <span style="display:inline-block;width:14px;margin-right:6px;text-align:center;">
+                    <i class="fa fa-flag" style="color:#2A81CB;"></i>
+                </span>
+                Terminal fin
+            </div>
+        </div>
+        """
+        if "</body>" in map_html:
+            map_html = map_html.replace("</body>", legend_html + "</body>")
+        _map_html_cache[map_kind] = map_html
     return _map_html_cache[map_kind]
 
 # Calcular rango del slider

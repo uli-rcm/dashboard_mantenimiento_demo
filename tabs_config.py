@@ -63,7 +63,7 @@ def build_tab_geometrica(app, pos_df, seg_df, RMS_THRESHOLD_GOOD, RMS_THRESHOLD_
             x=df_window['chainage_m'], y=df_window['rms_acc']*1000,
             mode='lines+markers', name='Aceleración RMS (mm/s²)',
             marker=dict(size=8, color='red'),
-            hovertemplate='<b>Chainage: %{x:.1f} m</b><br>RMS: %{y:.3f} mm/s²<extra></extra>'
+            hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>RMS: %{y:.3f} mm/s²<extra></extra>'
         ))
         
         # Colorear bandas según calidad
@@ -100,7 +100,7 @@ def build_tab_geometrica(app, pos_df, seg_df, RMS_THRESHOLD_GOOD, RMS_THRESHOLD_
             x=df_window['chainage_m'], y=df_window['disp_mm'],
             mode='lines+markers', name='Perfil vertical (mm)',
             marker=dict(size=8, color='blue'),
-            hovertemplate='<b>Chainage: %{x:.1f} m</b><br>Desplazamiento: %{y:.2f} mm<extra></extra>'
+            hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>Desplazamiento: %{y:.2f} mm<extra></extra>'
         ))
         
         # Colorear bandas según calidad
@@ -337,11 +337,11 @@ def build_tab_estructural(app, pos_df, seg_df, gpr_df, gpr_depth_samples, WINDOW
                 yanchor='top',
                 orientation='h'
             ),
-            hovertemplate='<b>Chainage: %{x:.1f} m</b><br>Profundidad: %{y:.0f} mm<br>Amplitud: %{z:.3f}<extra></extra>'
+            hovertemplate='<b>Cadenamiento: %{x:.1f} m</b><br>Profundidad: %{y:.0f} mm<br>Amplitud: %{z:.3f}<extra></extra>'
         ))
         
         fig.add_hline(y=400, line_dash="dash", line_color="cyan", opacity=0.6, annotation_text="Superficie balasto", annotation_position="right")
-        fig.add_hline(y=700, line_dash="dash", line_color="yellow", opacity=0.6, annotation_text="Interfaz balasto-subbalasto (fouled aquí)", annotation_position="right")
+        fig.add_hline(y=700, line_dash="dash", line_color="yellow", opacity=0.6, annotation_text="Interfaz balasto-subbalasto", annotation_position="right")
         fig.add_hline(y=1000, line_dash="dash", line_color="orange", opacity=0.6, annotation_text="Interfaz subbalasto-subrasante", annotation_position="right")
         fig.add_hline(y=1400, line_dash="dash", line_color="red", opacity=0.6, annotation_text="Base subrasante", annotation_position="right")
         
@@ -354,7 +354,7 @@ def build_tab_estructural(app, pos_df, seg_df, gpr_df, gpr_depth_samples, WINDOW
                 fig.add_vrect(x0=x0_win, x1=x1_win, fillcolor='rgba(231,76,60,0.08)', layer='below', line_width=0)
         
         fig.update_layout(
-            title=dict(text=f'Perfil GPR (B-scan): {chainage_min:.0f} - {chainage_max:.0f} m<br><sub>Radargrama con reflexiones en interfaces de capas</sub>', font=dict(size=14, color='#333', family='Arial')),
+            title=dict(text=f'Perfil GPR: {chainage_min:.0f} - {chainage_max:.0f} m<br><sub>Radargrama con reflexiones en interfaces de capas</sub>', font=dict(size=14, color='#333', family='Arial')),
             xaxis_title='Cadenamiento (m)',
             yaxis_title='Profundidad (mm)',
             height=600,
