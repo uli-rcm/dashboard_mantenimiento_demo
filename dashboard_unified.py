@@ -581,7 +581,8 @@ app.layout = html.Div([
     header,
     dcc.Tabs(
         value='tab-geometrica',
-        children=[tab_geometrica, tab_estructural, tab_lidar],
+        children=[tab_geometrica, tab_estructural], #Activar solo las pestañas de mapa y perfil vertical para optimizar memoria en deploy
+        #children=[tab_geometrica, tab_estructural, tab_lidar], #Activar todas las pestañas
         style={'padding': '10px 25px'}
     )
 ], style={
